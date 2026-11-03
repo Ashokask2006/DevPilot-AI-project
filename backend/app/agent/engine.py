@@ -311,13 +311,11 @@ class AgentEngine:
 
     def _execute_tool(self, tool_name: str, args: dict) -> dict:
         """Execute a tool via the registry with workspace isolation."""
-        # Tools that do NOT take workspace_root as first arg
-        no_workspace_tools: set[str] = set()
-
-        if tool_name in no_workspace_tools:
-            return self.registry._tools[tool_name](**args)
-
-        return self.registry.execute_tool(tool_name, self.workspace_root, args)
+        return self.registry.execute_tool(
+            tool_name=tool_name,
+            workspace_root=self.workspace_root,
+            arguments=args,
+        )
 
     def _persist_tool_execution(
         self,

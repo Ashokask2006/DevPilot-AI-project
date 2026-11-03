@@ -202,14 +202,15 @@ class ToolRegistry:
             },
             {
                 "name": "fix_errors",
-                "description": "Attempt to auto-fix detected errors and re-run the failing command or tests.",
+                "description": "Apply a targeted exact-text replacement to fix an error in a source file.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
-                        "error_output": {"type": "STRING", "description": "Error text or traceback to fix"},
-                        "command": {"type": "STRING", "description": "Command to re-run after fix attempt"}
+                        "file_path": {"type": "STRING", "description": "Relative path of the file to fix"},
+                        "target": {"type": "STRING", "description": "Exact text snippet to replace"},
+                        "replacement": {"type": "STRING", "description": "Corrected replacement text"}
                     },
-                    "required": ["error_output"]
+                    "required": ["file_path", "target", "replacement"]
                 }
             },
             {

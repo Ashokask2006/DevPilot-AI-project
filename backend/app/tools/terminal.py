@@ -5,6 +5,7 @@ purpose-built, restricted Docker sandbox. The application must never execute
 agent-provided commands on the backend host.
 """
 
+import os
 from typing import Any, Dict, Optional
 
 
@@ -41,7 +42,7 @@ def run_tests(workspace_root: str, test_cmd: Optional[str] = None) -> Dict[str, 
     return _disabled_result()
 
 
-def analyse_errors(workspace_root: str, error_log: str) -> Dict[str, Any]:
+def analyse_errors(workspace_root: str, error_output: str) -> Dict[str, Any]:
     """
     Parse and diagnose compilation, syntax, runtime, or test error logs.
     Identifies root causes, affected files, and offending line numbers.
@@ -50,7 +51,7 @@ def analyse_errors(workspace_root: str, error_log: str) -> Dict[str, Any]:
     diagnostics = []
 
     # Detect Python tracebacks: File "...", line X
-    py_tracebacks = re.findall(r'File "([^"]+)", line (\d+)(?:, in (\w+))?', error_log)
+    py_tracebacks = re.findall(r'File "([^"]+)", line (\d+)(?:, in (\w+))?', error_output)
     for tb_file, tb_line, tb_func in py_tracebacks:
         # Check if file belongs to workspace
         rel_path = os.path.relpath(tb_file, workspace_root).replace("\\", "/") if os.path.isabs(tb_file) else tb_file
@@ -63,14 +64,14 @@ def analyse_errors(workspace_root: str, error_log: str) -> Dict[str, Any]:
         })
 
     # Detect common Python exceptions
-    error_types = re.findall(r'([A-Za-z]+Error|Exception): (.+)', error_log)
+    error_types = re.findall(r'([A-Za-z]+Error|Exception): (.+)', error_output)
     exception_details = [{"type": et, "message": em.strip()} for et, em in error_types]
 
     # Detect pytest failures
-    pytest_failures = re.findall(r'FAILED ([\w/\\.\-]+)::(\w+) - (.+)', error_log)
+    pytest_failures = re.findall(r'FAILED ([\w/\\.\-]+)::(\w+) - (.+)', error_output)
     test_fails = [{"test_file": tf, "test_name": tn, "reason": tr} for tf, tn, tr in pytest_failures]
 
-    has_errors = bool(diagnostics or exception_details or test_fails or "error" in error_log.lower())
+    has_errors = bool(diagnostics or exception_details or test_fails or "error" in error_output.lower())
 
     return {
         "success": True,

@@ -7,10 +7,24 @@ import os
 import tempfile
 import sys
 
+import pytest
+
 # Ensure workspace path is clean
 ws = os.path.join(tempfile.gettempdir(), "devpilot_test_ws")
 os.makedirs(ws, exist_ok=True)
 
+
+LIVE_GEMINI_TEST_ENABLED = (
+    os.getenv("RUN_GEMINI_INTEGRATION_TESTS") == "1"
+    and bool(os.getenv("GEMINI_API_KEY", "").strip())
+)
+
+
+@pytest.mark.skipif(
+    not LIVE_GEMINI_TEST_ENABLED,
+    reason="Set RUN_GEMINI_INTEGRATION_TESTS=1 and GEMINI_API_KEY to run the live agent test.",
+)
+@pytest.mark.asyncio
 async def test_agent_loop():
     from app.agent.engine import AgentEngine
     from app.tools.registry import ToolRegistry
