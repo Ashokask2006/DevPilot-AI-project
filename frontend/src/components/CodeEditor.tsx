@@ -1,6 +1,6 @@
 import React from 'react';
 import Editor from '@monaco-editor/react';
-import { FileCode, Save, Sparkles, Check } from 'lucide-react';
+import { FileCode, Save, Check } from 'lucide-react';
 
 interface CodeEditorProps {
   activeFile: string | null;

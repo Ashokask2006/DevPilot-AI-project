@@ -5,31 +5,28 @@ import {
   Download, 
   Save, 
   Sparkles,
-  Layers,
-  ChevronDown,
-  RefreshCw,
-  ExternalLink
+  RefreshCw
 } from 'lucide-react';
-import { Project, AIStatus } from '../types';
+import { Project } from '../types';
 
 interface HeaderProps {
   activeProject: Project | null;
-  aiStatus: AIStatus | null;
   onRunCode: () => void;
   onSaveFile: () => void;
   onDownloadProject: () => void;
   isRunning: boolean;
+  executionEnabled: boolean;
   selectedModel: string;
   onSelectModel: (model: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeProject,
-  aiStatus,
   onRunCode,
   onSaveFile,
   onDownloadProject,
   isRunning,
+  executionEnabled,
   selectedModel,
   onSelectModel,
 }) => {
@@ -78,20 +75,24 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onRunCode}
-            disabled={isRunning}
-            title="Run Code in Isolated Sandbox"
+            disabled={isRunning || !executionEnabled}
+            title={executionEnabled ? 'Run code in the isolated sandbox' : 'Execution is disabled until the Docker sandbox is implemented'}
             className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold shadow-sm transition ${
-              isRunning 
+              isRunning
                 ? 'bg-amber-600/60 text-amber-200 cursor-not-allowed'
+                : !executionEnabled
+                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                 : 'bg-emerald-600 hover:bg-emerald-500 text-white'
             }`}
           >
             {isRunning ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
+            ) : !executionEnabled ? null : (
               <Play className="w-3.5 h-3.5 fill-current" />
             )}
-            <span>{isRunning ? 'Running...' : 'Run'}</span>
+            <span>
+              {isRunning ? 'Running...' : executionEnabled ? 'Run' : 'Execution Disabled'}
+            </span>
           </button>
 
           {activeProject && (

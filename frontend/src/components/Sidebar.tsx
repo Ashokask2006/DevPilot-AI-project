@@ -1,13 +1,9 @@
 import React from 'react';
 import { 
-  FolderPlus, 
   MessageSquare, 
   Settings as SettingsIcon, 
-  Terminal, 
   Code2, 
   Sparkles, 
-  CheckCircle2, 
-  AlertCircle,
   FolderTree,
   ChevronRight,
   Plus

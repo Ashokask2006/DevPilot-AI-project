@@ -1,8 +1,5 @@
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 import uvicorn
 
 from app.core.config import settings
@@ -32,6 +29,15 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 
+@app.get("/")
+def api_root():
+    return {
+        "service": settings.PROJECT_NAME,
+        "message": "API service. The web interface is served by the frontend container.",
+        "execution_enabled": False,
+    }
+
+
 @app.get("/health")
 def health():
     return {
@@ -47,17 +53,6 @@ def gemini_status():
     Test and report status of Google Gemini API connection securely.
     """
     return gemini_service.test_connection()
-
-
-# Serve UI Static files
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-    @app.get("/")
-    def serve_dashboard():
-        return FileResponse(os.path.join(static_dir, "index.html"))
-
 
 if __name__ == "__main__":
     uvicorn.run(
