@@ -1,35 +1,51 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: devpilot_backend
-    ports:
-      - "8000:8000"
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
-      - HOST=0.0.0.0
-      - PORT=8000
+      DEBUG: "false"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}
+      DATABASE_URL: sqlite:////data/devpilot.db
+      WORKSPACES_ROOT: /data/workspaces
+    expose:
+      - "8000"
     volumes:
-      - ./backend:/app
-      - ./workspaces:/app/workspaces
-    restart: unless-stopped
+      - devpilot_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: devpilot_frontend
-    ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    restart: unless-stopped
+      args:
+        VITE_API_URL: ""
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5173:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  devpilot_data:

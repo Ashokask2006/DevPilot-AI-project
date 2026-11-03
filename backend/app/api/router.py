@@ -141,13 +141,20 @@ def download_project_zip(project_id: int, db: Session = Depends(get_db)):
     if not proj or not os.path.exists(proj.workspace_path):
         raise HTTPException(status_code=404, detail="Project workspace not found")
 
+    workspace_root = os.path.realpath(proj.workspace_path)
     mem_zip = io.BytesIO()
     with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(proj.workspace_path):
-            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "venv", ".venv", "node_modules")]
+        for root, dirs, files in os.walk(workspace_root):
+            dirs[:] = [
+                d for d in dirs
+                if d not in (".git", "__pycache__", "venv", ".venv", "node_modules")
+                and filesystem.is_within_workspace(workspace_root, os.path.join(root, d))
+            ]
             for file in files:
                 full_path = os.path.join(root, file)
-                arcname = os.path.relpath(full_path, proj.workspace_path)
+                if not filesystem.is_within_workspace(workspace_root, full_path):
+                    continue
+                arcname = os.path.relpath(full_path, workspace_root)
                 zf.write(full_path, arcname)
 
     mem_zip.seek(0)

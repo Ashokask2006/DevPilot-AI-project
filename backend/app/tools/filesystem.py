@@ -9,20 +9,38 @@ import fnmatch
 from typing import Dict, Any, List, Optional
 
 
+def _is_within_workspace(workspace_abs: str, target_abs: str) -> bool:
+    try:
+        return os.path.commonpath([workspace_abs, target_abs]) == workspace_abs
+    except ValueError:
+        return False
+
+
+def is_within_workspace(workspace_root: str, path: str) -> bool:
+    """Return whether a path resolves inside the workspace root."""
+    workspace_abs = os.path.realpath(workspace_root)
+    target_abs = os.path.realpath(path)
+    return os.path.isdir(workspace_abs) and _is_within_workspace(workspace_abs, target_abs)
+
+
 def _resolve_safe_path(workspace_root: str, relative_or_abs_path: str) -> str:
     """
     Ensure the resolved path strictly resides within the workspace root.
     Raises PermissionError if a path traversal attempt is detected.
     """
-    workspace_abs = os.path.abspath(workspace_root)
+    workspace_abs = os.path.realpath(workspace_root)
+    if not os.path.isdir(workspace_abs):
+        raise FileNotFoundError(f"Workspace directory not found: {workspace_root}")
+
     # If path is given relative to workspace
     if os.path.isabs(relative_or_abs_path):
-        target_abs = os.path.abspath(relative_or_abs_path)
+        target_abs = os.path.realpath(relative_or_abs_path)
     else:
-        target_abs = os.path.abspath(os.path.join(workspace_abs, relative_or_abs_path))
+        target_abs = os.path.realpath(os.path.join(workspace_abs, relative_or_abs_path))
 
-    # Common path check to prevent escaping sandbox
-    if os.path.commonpath([workspace_abs, target_abs]) != workspace_abs:
+    # Resolve symlinks before containment checks so an in-workspace symlink
+    # cannot be used to reach a file outside the workspace.
+    if not _is_within_workspace(workspace_abs, target_abs):
         raise PermissionError(f"Access denied: Path '{relative_or_abs_path}' is outside workspace boundaries.")
 
     return target_abs
@@ -41,6 +59,8 @@ def list_files(workspace_root: str, subpath: str = ".") -> Dict[str, Any]:
         for entry in os.scandir(target_dir):
             # Ignore git and common build artifacts
             if entry.name in (".git", "node_modules", "__pycache__", ".venv", "venv"):
+                continue
+            if not is_within_workspace(workspace_root, entry.path):
                 continue
             entries.append({
                 "name": entry.name,
@@ -89,10 +109,12 @@ def create_file(workspace_root: str, file_path: str, content: str, overwrite: bo
     """
     try:
         target_file = _resolve_safe_path(workspace_root, file_path)
-        if os.path.exists(target_file) and not overwrite:
+        existed = os.path.exists(target_file)
+        if existed and not overwrite:
             return {"success": False, "error": f"File already exists: {file_path}. Set overwrite=True to replace."}
 
         os.makedirs(os.path.dirname(target_file), exist_ok=True)
+        target_file = _resolve_safe_path(workspace_root, target_file)
         with open(target_file, "w", encoding="utf-8") as f:
             f.write(content)
 
@@ -100,7 +122,7 @@ def create_file(workspace_root: str, file_path: str, content: str, overwrite: bo
             "success": True,
             "path": os.path.relpath(target_file, workspace_root).replace("\\", "/"),
             "bytes_written": len(content.encode("utf-8")),
-            "action": "overwritten" if os.path.exists(target_file) else "created"
+            "action": "overwritten" if existed else "created"
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -178,12 +200,18 @@ def search_files(workspace_root: str, query: str, pattern: str = "*") -> Dict[st
     """
     try:
         results = []
-        workspace_abs = os.path.abspath(workspace_root)
+        workspace_abs = os.path.realpath(workspace_root)
         for root, dirs, files in os.walk(workspace_abs):
-            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build")]
+            dirs[:] = [
+                d for d in dirs
+                if d not in (".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build")
+                and is_within_workspace(workspace_abs, os.path.join(root, d))
+            ]
             for file in files:
                 if fnmatch.fnmatch(file, pattern):
                     file_full = os.path.join(root, file)
+                    if not is_within_workspace(workspace_abs, file_full):
+                        continue
                     rel_path = os.path.relpath(file_full, workspace_root).replace("\\", "/")
                     try:
                         with open(file_full, "r", encoding="utf-8", errors="ignore") as f:
@@ -211,7 +239,7 @@ def get_project_structure(workspace_root: str, max_depth: int = 4) -> Dict[str, 
     Generate an ASCII tree representation of the project workspace.
     """
     try:
-        workspace_abs = os.path.abspath(workspace_root)
+        workspace_abs = os.path.realpath(workspace_root)
         lines = [os.path.basename(workspace_abs) + "/"]
 
         def _traverse(current_dir: str, prefix: str = "", depth: int = 1):
@@ -221,6 +249,8 @@ def get_project_structure(workspace_root: str, max_depth: int = 4) -> Dict[str, 
             try:
                 for entry in os.scandir(current_dir):
                     if entry.name in (".git", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache", "dist"):
+                        continue
+                    if not is_within_workspace(workspace_abs, entry.path):
                         continue
                     entries.append(entry)
             except PermissionError:

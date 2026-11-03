@@ -5,17 +5,11 @@ import {
   Bot, 
   User, 
   Terminal, 
-  FileCode, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Clock, 
-  Paperclip,
   Square,
-  ArrowRight,
-  Code
+  ArrowRight
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { Message, ToolExecution } from '../types';
+import { Message } from '../types';
 
 interface ChatAreaProps {
   messages: Message[];
