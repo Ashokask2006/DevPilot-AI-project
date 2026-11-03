@@ -59,7 +59,7 @@ class ConversationResponse(BaseModel):
 class PromptRequest(BaseModel):
     prompt: str
     conversation_id: Optional[int] = None
-    project_id: Optional[int] = None
+    project_id: int = Field(..., gt=0)
     model: Optional[str] = None
     stream: bool = True
 
