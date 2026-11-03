@@ -28,7 +28,8 @@ export const App: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('gemini-flash-lite-latest');
   const [isGenerating, setIsGenerating] = useState(false);
   const [agentStatus, setAgentStatus] = useState<string | null>(null);
-  const [isRunningCode, setIsRunningCode] = useState(false);
+  const isRunningCode = false;
+  const executionEnabled = false;
   
   // Modals & Panels
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -37,11 +38,11 @@ export const App: React.FC = () => {
   
   // Terminal logs & Problems
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
-    'DevPilot AI Environment Initialized.',
-    'Ready to accept engineering commands.'
+    'DevPilot AI environment initialized.',
+    'Project command execution is disabled until the Docker sandbox is implemented.'
   ]);
-  const [problems, setProblems] = useState<{ file: string; line: number; message: string; severity: 'error' | 'warning' }[]>([]);
-  const [testResults, setTestResults] = useState<{ passed: number; failed: number; total: number; output: string } | null>(null);
+  const problems: { file: string; line: number; message: string; severity: 'error' | 'warning' }[] = [];
+  const testResults: { passed: number; failed: number; total: number; output: string } | null = null;
 
   // Initial load
   useEffect(() => {
@@ -189,23 +190,12 @@ export const App: React.FC = () => {
     setAgentStatus('analysing_request');
 
     try {
-      // Connect to Agent Engine backend via REST/WebSocket
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/agent/prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: userPrompt,
-          conversation_id: activeConversation?.id,
-          project_id: activeProject?.id,
-          model: selectedModel,
-        }),
+      const data = await api.sendAgentPrompt({
+        prompt: userPrompt,
+        conversation_id: activeConversation?.id,
+        project_id: activeProject?.id,
+        model: selectedModel,
       });
-
-      if (!res.ok) {
-        throw new Error(`Agent request failed: ${res.statusText}`);
-      }
-
-      const data = await res.json();
       
       const assistantMsg: Message = {
         id: Date.now() + 1,
@@ -223,8 +213,9 @@ export const App: React.FC = () => {
         loadFiles(activeProject.id);
       }
 
-      if (data.logs && data.logs.length > 0) {
-        setTerminalLogs(prev => [...prev, ...data.logs]);
+      const logs = data.logs ?? [];
+      if (logs.length > 0) {
+        setTerminalLogs(prev => [...prev, ...logs]);
       }
     } catch (err: any) {
       setMessages(prev => [
@@ -245,23 +236,15 @@ export const App: React.FC = () => {
 
   const handleRunCode = async () => {
     if (!activeProject) return;
-    setIsRunningCode(true);
-    setTerminalLogs(prev => [...prev, `[Sandbox Exec] Running project in isolated sandbox...`]);
-    try {
-      const res = await api.executeTerminalCommand(activeProject.id, 'run_tests');
-      if (res.stdout) setTerminalLogs(prev => [...prev, res.stdout]);
-      if (res.stderr) setTerminalLogs(prev => [...prev, `[stderr] ${res.stderr}`]);
-      setTerminalLogs(prev => [...prev, `[Execution Complete] Exit code: ${res.return_code} (${res.duration_seconds}s)`]);
-    } catch (err: any) {
-      setTerminalLogs(prev => [...prev, `[Execution Failed] ${err.message}`]);
-    } finally {
-      setIsRunningCode(false);
-    }
+    setTerminalLogs(prev => [
+      ...prev,
+      '[Execution Disabled] Project commands require the forthcoming Docker sandbox.'
+    ]);
   };
 
   const handleDownloadProject = () => {
     if (!activeProject) return;
-    window.open(`http://127.0.0.1:8000/api/v1/projects/${activeProject.id}/download`, '_blank');
+    window.open(api.projectDownloadUrl(activeProject.id), '_blank', 'noopener');
   };
 
   return (
@@ -288,11 +271,11 @@ export const App: React.FC = () => {
         {/* Top Header */}
         <Header
           activeProject={activeProject}
-          aiStatus={aiStatus}
           onRunCode={handleRunCode}
           onSaveFile={handleSaveFile}
           onDownloadProject={handleDownloadProject}
           isRunning={isRunningCode}
+          executionEnabled={executionEnabled}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
         />
@@ -318,7 +301,6 @@ export const App: React.FC = () => {
               onSelectFile={(f) => handleOpenFile(f)}
               onRefresh={() => activeProject && loadFiles(activeProject.id)}
               onCreateFile={handleCreateFile}
-              onCreateFolder={() => {}}
             />
             <CodeEditor
               activeFile={activeFile}

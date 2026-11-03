@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   Terminal as TerminalIcon, 
   AlertCircle, 
-  CheckCircle2, 
   Trash2, 
   ChevronDown, 
   ChevronUp,

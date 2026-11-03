@@ -2,12 +2,9 @@ import React, { useState } from 'react';
 import { 
   X, 
   Sparkles, 
-  CheckCircle2, 
-  AlertCircle, 
   RefreshCw, 
   ExternalLink,
-  ShieldCheck,
-  Cpu
+  ShieldCheck
 } from 'lucide-react';
 import { AIStatus } from '../types';
 import { fetchAIStatus } from '../services/api';

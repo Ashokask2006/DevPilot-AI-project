@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FolderPlus, Code2, Sparkles } from 'lucide-react';
+import { X, FolderPlus, Code2 } from 'lucide-react';
 
 interface NewProjectModalProps {
   isOpen: boolean;

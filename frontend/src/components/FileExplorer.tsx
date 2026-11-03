@@ -1,15 +1,9 @@
 import React, { useState } from 'react';
 import { 
   Folder, 
-  FolderOpen, 
-  FileCode, 
   FileText, 
   FilePlus, 
-  FolderPlus, 
-  RefreshCw, 
-  Trash2,
-  ChevronRight,
-  ChevronDown
+  RefreshCw
 } from 'lucide-react';
 import { FileItem } from '../types';
 
@@ -19,7 +13,6 @@ interface FileExplorerProps {
   onSelectFile: (filePath: string) => void;
   onRefresh: () => void;
   onCreateFile: (fileName: string) => void;
-  onCreateFolder: (folderName: string) => void;
 }
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({
@@ -28,7 +21,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
   onSelectFile,
   onRefresh,
   onCreateFile,
-  onCreateFolder,
 }) => {
   const [newFileInput, setNewFileInput] = useState(false);
   const [newFileName, setNewFileName] = useState('');
