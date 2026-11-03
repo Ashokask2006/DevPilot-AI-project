@@ -241,3 +241,46 @@ def get_project_structure(workspace_root: str, max_depth: int = 4) -> Dict[str, 
         return {"success": True, "tree": "\n".join(lines)}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def batch_edit_files(workspace_root: str, edits: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Perform multi-file creation and editing in a single atomic batch.
+    Each item in 'edits' must have 'file_path' and 'content'.
+    Optional 'mode' can be 'overwrite' (default) or 'replace' (requires 'target').
+    """
+    results = []
+    failed = []
+
+    for item in edits:
+        file_path = item.get("file_path")
+        if not file_path:
+            failed.append({"item": item, "error": "Missing file_path"})
+            continue
+
+        mode = item.get("mode", "overwrite")
+        try:
+            if mode == "replace":
+                target = item.get("target", "")
+                replacement = item.get("content", "")
+                res = edit_file(workspace_root, file_path, target, replacement)
+            else:
+                content = item.get("content", "")
+                overwrite = item.get("overwrite", True)
+                res = create_file(workspace_root, file_path, content, overwrite=overwrite)
+
+            if res.get("success"):
+                results.append({"file_path": file_path, "status": "success", "action": res.get("action", mode)})
+            else:
+                failed.append({"file_path": file_path, "status": "failed", "error": res.get("error")})
+        except Exception as e:
+            failed.append({"file_path": file_path, "status": "failed", "error": str(e)})
+
+    return {
+        "success": len(failed) == 0,
+        "total_edits": len(edits),
+        "successful_edits": len(results),
+        "failed_edits": len(failed),
+        "changes": results,
+        "errors": failed
+    }

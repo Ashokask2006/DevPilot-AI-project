@@ -3,7 +3,7 @@ Tool Registry for DevPilot AI.
 Provides unified dispatch, validation, and schema definitions for all agent tools.
 """
 
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List
 from app.tools import filesystem, terminal, git_tools
 
 
@@ -25,10 +25,13 @@ class ToolRegistry:
         self.register("create_directory", filesystem.create_directory)
         self.register("search_files", filesystem.search_files)
         self.register("get_project_structure", filesystem.get_project_structure)
+        self.register("batch_edit_files", filesystem.batch_edit_files)
 
         # Terminal & Execution
         self.register("run_command", terminal.run_command)
         self.register("run_tests", terminal.run_tests)
+        self.register("analyse_errors", terminal.analyse_errors)
+        self.register("fix_errors", terminal.fix_errors)
 
         # Git
         self.register("git_status", git_tools.git_status)
@@ -55,7 +58,7 @@ class ToolRegistry:
 
     def get_tool_definitions(self) -> list:
         """
-        Return OpenAPI-style or Gemini-compatible function schemas.
+        Return Gemini-compatible function schemas for all registered tools.
         """
         return [
             {
@@ -81,7 +84,7 @@ class ToolRegistry:
             },
             {
                 "name": "create_file",
-                "description": "Create a new source file or overwrite with new content.",
+                "description": "Create a new source file or overwrite an existing one with full content.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -148,8 +151,26 @@ class ToolRegistry:
                 }
             },
             {
+                "name": "batch_edit_files",
+                "description": (
+                    "Create or edit multiple files in a single atomic batch. "
+                    "Use this when you need to scaffold several files at once (e.g. an entire module). "
+                    "Each entry needs 'file_path' and 'content'; optional 'mode': 'overwrite' (default) or 'replace' (also needs 'target')."
+                ),
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "edits": {
+                            "type": "ARRAY",
+                            "description": "List of file edit objects. Each has file_path, content, and optional mode/target."
+                        }
+                    },
+                    "required": ["edits"]
+                }
+            },
+            {
                 "name": "run_command",
-                "description": "Run an approved command in the workspace terminal sandbox.",
+                "description": "Run an approved shell command in the workspace terminal sandbox.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -160,12 +181,35 @@ class ToolRegistry:
             },
             {
                 "name": "run_tests",
-                "description": "Execute test suite in the project workspace.",
+                "description": "Execute the test suite in the project workspace.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "test_cmd": {"type": "STRING", "description": "Optional custom test command"}
                     }
+                }
+            },
+            {
+                "name": "analyse_errors",
+                "description": "Analyse error output or logs to identify root causes and suggest fixes.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "error_output": {"type": "STRING", "description": "Error text, traceback, or log to analyse"}
+                    },
+                    "required": ["error_output"]
+                }
+            },
+            {
+                "name": "fix_errors",
+                "description": "Attempt to auto-fix detected errors and re-run the failing command or tests.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "error_output": {"type": "STRING", "description": "Error text or traceback to fix"},
+                        "command": {"type": "STRING", "description": "Command to re-run after fix attempt"}
+                    },
+                    "required": ["error_output"]
                 }
             },
             {

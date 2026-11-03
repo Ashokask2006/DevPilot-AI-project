@@ -108,3 +108,52 @@ def run_tests(workspace_root: str, test_cmd: Optional[str] = None) -> Dict[str, 
             test_cmd = "python -m unittest discover"
 
     return run_command(workspace_root, test_cmd)
+
+
+def analyse_errors(workspace_root: str, error_log: str) -> Dict[str, Any]:
+    """
+    Parse and diagnose compilation, syntax, runtime, or test error logs.
+    Identifies root causes, affected files, and offending line numbers.
+    """
+    import re
+    diagnostics = []
+
+    # Detect Python tracebacks: File "...", line X
+    py_tracebacks = re.findall(r'File "([^"]+)", line (\d+)(?:, in (\w+))?', error_log)
+    for tb_file, tb_line, tb_func in py_tracebacks:
+        # Check if file belongs to workspace
+        rel_path = os.path.relpath(tb_file, workspace_root).replace("\\", "/") if os.path.isabs(tb_file) else tb_file
+        diagnostics.append({
+            "language": "python",
+            "file": rel_path,
+            "line": int(tb_line),
+            "function": tb_func or "unknown",
+            "type": "traceback"
+        })
+
+    # Detect common Python exceptions
+    error_types = re.findall(r'([A-Za-z]+Error|Exception): (.+)', error_log)
+    exception_details = [{"type": et, "message": em.strip()} for et, em in error_types]
+
+    # Detect pytest failures
+    pytest_failures = re.findall(r'FAILED ([\w/\\.\-]+)::(\w+) - (.+)', error_log)
+    test_fails = [{"test_file": tf, "test_name": tn, "reason": tr} for tf, tn, tr in pytest_failures]
+
+    has_errors = bool(diagnostics or exception_details or test_fails or "error" in error_log.lower())
+
+    return {
+        "success": True,
+        "has_errors": has_errors,
+        "tracebacks": diagnostics,
+        "exceptions": exception_details,
+        "test_failures": test_fails,
+        "summary": f"Detected {len(exception_details)} exception(s) and {len(test_fails)} test failure(s)."
+    }
+
+
+def fix_errors(workspace_root: str, file_path: str, target: str, replacement: str) -> Dict[str, Any]:
+    """
+    Apply a targeted fix to resolve an identified bug in a source file.
+    """
+    from app.tools.filesystem import edit_file
+    return edit_file(workspace_root, file_path, target, replacement)

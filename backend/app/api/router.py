@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import zipfile
 import io
@@ -18,6 +19,7 @@ from app.core.config import settings
 from app.services.gemini_service import gemini_service
 from app.tools import filesystem, terminal, git_tools
 from app.tools.registry import tool_registry
+from app.agent.engine import AgentEngine
 
 api_router = APIRouter()
 
@@ -181,12 +183,12 @@ def create_conversation(data: ConversationCreate, db: Session = Depends(get_db))
 @api_router.post("/agent/prompt")
 async def execute_agent_prompt(data: PromptRequest, db: Session = Depends(get_db)):
     """
-    Executes the DevPilot AI Autonomous Agent Loop:
-    1. Understands prompt
-    2. Inspects project files
-    3. Calls Gemini with tools
-    4. Executes requested tools in sandbox workspace
-    5. Returns result and step execution logs
+    Executes the DevPilot AI Autonomous Agent Loop using Gemini function calling:
+    1. Understands user prompt
+    2. Calls Gemini with all registered tools
+    3. Executes tool calls in sandboxed workspace
+    4. Loops until task is complete or max_iterations reached
+    5. Returns reply, tool_calls_log, logs, and files_changed
     """
     workspace_path = settings.WORKSPACES_ROOT
     if data.project_id:
@@ -212,35 +214,25 @@ async def execute_agent_prompt(data: PromptRequest, db: Session = Depends(get_db
     db.commit()
     db.refresh(task)
 
-    # Context about existing project files
-    struct = filesystem.get_project_structure(workspace_path)
-    current_tree = struct.get("tree", "")
-
-    system_instruction = (
-        "You are DevPilot AI, an expert autonomous software engineer. "
-        "Your task is to write working, bug-free, clean code for the user. "
-        "When generating code, create or modify files directly and explain the design cleanly. "
-        f"\n\nCurrent Workspace Architecture:\n{current_tree}\n"
-    )
-
-    logs = []
-    tool_calls = []
-
-    # Use configured model
-    model = data.model or settings.GEMINI_MODEL
-
     try:
-        # Call Gemini API
-        service = gemini_service
-        if data.model and data.model != service.model:
-            from app.services.gemini_service import GeminiService
-            service = GeminiService(model=data.model)
-
-        reply = await service.generate_response(
-            prompt=data.prompt,
-            system_instruction=system_instruction,
-            temperature=0.3
+        # Run the advanced agentic loop
+        engine = AgentEngine(
+            workspace_root=workspace_path,
+            tool_registry=tool_registry,
+            db=db,
         )
+
+        result = await engine.run(
+            prompt=data.prompt,
+            conversation_id=data.conversation_id,
+            project_id=data.project_id,
+            task_id=task.id,
+        )
+
+        reply = result["reply"]
+        tool_calls_log = result["tool_calls_log"]
+        logs = result["logs"]
+        files_changed = result["files_changed"]
 
         task.task_status = "completed"
         db.commit()
@@ -255,16 +247,113 @@ async def execute_agent_prompt(data: PromptRequest, db: Session = Depends(get_db
             db.add(assistant_msg)
             db.commit()
 
-        logs.append(f"[Gemini {model}] Response generated successfully.")
-
         return {
             "success": True,
             "reply": reply,
-            "tool_calls": tool_calls,
-            "logs": logs
+            "tool_calls": tool_calls_log,
+            "logs": logs,
+            "files_changed": files_changed,
+            "task_id": task.id,
         }
 
     except Exception as e:
         task.task_status = "failed"
         db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ----------------- Batch Edit API -----------------
+
+@api_router.post("/projects/{project_id}/batch-edit")
+def batch_edit_project_files(project_id: int, payload: dict, db: Session = Depends(get_db)):
+    """
+    Apply multiple file creates/edits atomically in one request.
+    Body: { "edits": [ { "file_path": str, "content": str, "mode": "overwrite"|"replace", "target": str }, ... ] }
+    """
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    edits = payload.get("edits", [])
+    if not edits:
+        raise HTTPException(status_code=400, detail="No edits provided")
+
+    result = filesystem.batch_edit_files(proj.workspace_path, edits)
+    return result
+
+
+# ----------------- Tasks API -----------------
+
+@api_router.get("/projects/{project_id}/tasks")
+def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
+    """List all agent tasks for a project, with their tool executions."""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tasks = (
+        db.query(AgentTask)
+        .filter(AgentTask.project_id == project_id)
+        .order_by(AgentTask.created_at.desc())
+        .all()
+    )
+
+    result = []
+    for t in tasks:
+        executions = (
+            db.query(ToolExecution)
+            .filter(ToolExecution.task_id == t.id)
+            .order_by(ToolExecution.id)
+            .all()
+        )
+        result.append({
+            "id": t.id,
+            "project_id": t.project_id,
+            "task_description": t.task_description,
+            "task_status": t.task_status,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "tool_executions": [
+                {
+                    "id": ex.id,
+                    "tool_name": ex.tool_name,
+                    "tool_input": json.loads(ex.tool_input) if ex.tool_input else {},
+                    "tool_output": json.loads(ex.tool_output) if ex.tool_output else {},
+                    "success": ex.success,
+                }
+                for ex in executions
+            ],
+        })
+    return result
+
+
+@api_router.get("/tasks/{task_id}")
+def get_task_detail(task_id: int, db: Session = Depends(get_db)):
+    """Get a single agent task with full tool execution log."""
+    task = db.query(AgentTask).filter(AgentTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    executions = (
+        db.query(ToolExecution)
+        .filter(ToolExecution.task_id == task_id)
+        .order_by(ToolExecution.id)
+        .all()
+    )
+
+    return {
+        "id": task.id,
+        "project_id": task.project_id,
+        "task_description": task.task_description,
+        "task_status": task.task_status,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "tool_executions": [
+            {
+                "id": ex.id,
+                "tool_name": ex.tool_name,
+                "tool_input": json.loads(ex.tool_input) if ex.tool_input else {},
+                "tool_output": json.loads(ex.tool_output) if ex.tool_output else {},
+                "success": ex.success,
+            }
+            for ex in executions
+        ],
+    }
