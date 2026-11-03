@@ -3,7 +3,7 @@ Tool Registry for DevPilot AI.
 Provides unified dispatch, validation, and schema definitions for all agent tools.
 """
 
-from typing import Dict, Any, Callable, List
+from typing import Any, Callable, Dict
 from app.tools import filesystem, terminal, git_tools
 
 
@@ -170,7 +170,7 @@ class ToolRegistry:
             },
             {
                 "name": "run_command",
-                "description": "Run an approved shell command in the workspace terminal sandbox.",
+                "description": "Unavailable until the restricted Docker execution sandbox is implemented.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -181,7 +181,7 @@ class ToolRegistry:
             },
             {
                 "name": "run_tests",
-                "description": "Execute the test suite in the project workspace.",
+                "description": "Unavailable until the restricted Docker execution sandbox is implemented.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
@@ -215,7 +215,7 @@ class ToolRegistry:
             },
             {
                 "name": "git_status",
-                "description": "Check current Git status in workspace.",
+                "description": "Unavailable until Git inspection can run inside the restricted Docker sandbox.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {}
@@ -223,7 +223,7 @@ class ToolRegistry:
             },
             {
                 "name": "git_diff",
-                "description": "Check Git diff of modified files in workspace.",
+                "description": "Unavailable until Git inspection can run inside the restricted Docker sandbox.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {

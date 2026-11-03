@@ -7,7 +7,7 @@ const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 export interface AgentPrompt {
   prompt: string;
   conversation_id?: number;
-  project_id?: number;
+  project_id: number;
   model?: string;
 }
 

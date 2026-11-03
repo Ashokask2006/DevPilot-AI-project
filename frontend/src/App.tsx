@@ -176,6 +176,13 @@ export const App: React.FC = () => {
 
   const handleSendMessage = async (userPrompt: string) => {
     if (!userPrompt.trim()) return;
+    if (!activeProject) {
+      setTerminalLogs(prev => [
+        ...prev,
+        '[Agent Error] Select or create a project before sending an agent request.'
+      ]);
+      return;
+    }
 
     // Add User Message
     const userMsg: Message = {
@@ -193,7 +200,7 @@ export const App: React.FC = () => {
       const data = await api.sendAgentPrompt({
         prompt: userPrompt,
         conversation_id: activeConversation?.id,
-        project_id: activeProject?.id,
+        project_id: activeProject.id,
         model: selectedModel,
       });
       

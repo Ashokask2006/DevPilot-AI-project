@@ -1,66 +1,31 @@
-"""
-Git integration tools for DevPilot AI.
-Provides status, diff, and revision checks for projects.
+"""Disabled Git tools for DevPilot AI.
+
+Git commands must not run on the backend host. Even read-only Git operations can
+invoke repository-configured helpers, so these tools remain unavailable until
+they can execute inside the restricted Docker sandbox.
 """
 
-import subprocess
-import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+
+GIT_EXECUTION_DISABLED_MESSAGE = (
+    "Git command execution is disabled until the Docker sandbox is implemented."
+)
+
+
+def _disabled_result() -> Dict[str, Any]:
+    return {
+        "success": False,
+        "execution_enabled": False,
+        "error": GIT_EXECUTION_DISABLED_MESSAGE,
+    }
 
 
 def git_status(workspace_root: str) -> Dict[str, Any]:
-    """
-    Get git status of the project workspace.
-    """
-    workspace_abs = os.path.abspath(workspace_root)
-    try:
-        proc = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=workspace_abs,
-            capture_output=True,
-            text=True,
-            timeout=10,
-            encoding="utf-8",
-            errors="replace"
-        )
-        if proc.returncode != 0:
-            return {"success": False, "is_repo": False, "error": proc.stderr.strip()}
-
-        changes = []
-        for line in proc.stdout.splitlines():
-            if line.strip():
-                status_code = line[:2].strip()
-                file_name = line[3:].strip()
-                changes.append({"status": status_code, "file": file_name})
-
-        return {"success": True, "is_repo": True, "changes": changes, "raw": proc.stdout}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    """Report that Git status requires the Docker sandbox."""
+    return _disabled_result()
 
 
 def git_diff(workspace_root: str, file_path: str = "") -> Dict[str, Any]:
-    """
-    Get git diff for uncommitted modifications.
-    """
-    workspace_abs = os.path.abspath(workspace_root)
-    try:
-        cmd = ["git", "diff"]
-        if file_path:
-            cmd.append(file_path)
-            
-        proc = subprocess.run(
-            cmd,
-            cwd=workspace_abs,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            encoding="utf-8",
-            errors="replace"
-        )
-        return {
-            "success": proc.returncode == 0,
-            "diff": proc.stdout,
-            "has_diff": bool(proc.stdout.strip())
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    """Report that Git diff requires the Docker sandbox."""
+    return _disabled_result()

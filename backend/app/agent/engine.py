@@ -14,7 +14,7 @@ Implements a multi-step agentic loop:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from google import genai
@@ -37,12 +37,13 @@ class AgentEngine:
         workspace_root: str,
         tool_registry: ToolRegistry,
         db=None,
+        model: str | None = None,
     ):
         self.workspace_root = workspace_root
         self.registry = tool_registry
         self.db = db
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model = settings.GEMINI_MODEL
+        self.model = model or settings.GEMINI_MODEL
 
     # ------------------------------------------------------------------
     # Public API
@@ -61,6 +62,8 @@ class AgentEngine:
 
         Returns:
             {
+                "success": bool,             # Whether the loop completed normally
+                "error": str | None,         # Safe failure summary
                 "reply": str,               # Final Gemini text response
                 "tool_calls_log": list,     # List of {tool, args, result} dicts
                 "logs": list[str],          # Human-readable log lines
@@ -71,6 +74,8 @@ class AgentEngine:
         tool_calls_log: list[dict] = []
         files_changed: list[str] = []
         reply = ""
+        success = False
+        error: str | None = None
 
         logs.append(f"[AgentEngine] Starting agent loop — model: {self.model}")
         logs.append(f"[AgentEngine] Workspace: {self.workspace_root}")
@@ -91,11 +96,14 @@ class AgentEngine:
         )
 
         try:
-            chat = self.client.chats.create(model=self.model, config=config)
+            chat = self.client.aio.chats.create(model=self.model, config=config)
         except Exception as e:
             logs.append(f"[AgentEngine] ERROR creating chat session: {e}")
+            error = "Failed to initialise the AI session."
             return {
-                "reply": f"Failed to initialise AI session: {e}",
+                "success": False,
+                "error": error,
+                "reply": error,
                 "tool_calls_log": tool_calls_log,
                 "logs": logs,
                 "files_changed": files_changed,
@@ -110,10 +118,11 @@ class AgentEngine:
             logs.append(f"[AgentEngine] Iteration {iteration}/{max_iterations}")
 
             try:
-                response = chat.send_message(current_message)
+                response = await chat.send_message(current_message)
             except Exception as e:
                 logs.append(f"[AgentEngine] ERROR sending message: {e}")
-                reply = f"Agent error during iteration {iteration}: {e}"
+                error = f"Agent request failed during iteration {iteration}."
+                reply = error
                 break
 
             # Collect function calls from all candidate parts
@@ -123,6 +132,7 @@ class AgentEngine:
                 # No more tool calls — extract final text reply
                 reply = self._extract_text(response)
                 logs.append(f"[AgentEngine] Final reply received ({len(reply)} chars)")
+                success = True
                 break
 
             # Execute each function call and build response parts
@@ -160,7 +170,7 @@ class AgentEngine:
                         "tool": tool_name,
                         "args": tool_args,
                         "result": result,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
 
@@ -185,9 +195,12 @@ class AgentEngine:
 
         else:
             logs.append(f"[AgentEngine] WARNING: Reached max_iterations ({max_iterations})")
-            reply = reply or "Agent reached maximum iteration limit. Partial results may be available."
+            error = "Agent reached the maximum iteration limit."
+            reply = reply or f"{error} Partial results may be available."
 
         return {
+            "success": success,
+            "error": error,
             "reply": reply,
             "tool_calls_log": tool_calls_log,
             "logs": logs,
@@ -262,7 +275,8 @@ class AgentEngine:
             + f"\n\n## Current Workspace\n`{self.workspace_root}`\n\n"
             "When writing code, ALWAYS use the file tools (create_file, edit_file, batch_edit_files) "
             "to save code to disk rather than only returning code in your reply. "
-            "Use run_command to install dependencies or run tests. "
+            "Command, test, and Git execution tools are disabled until the restricted Docker "
+            "sandbox is implemented; do not call them. "
             "Use get_project_structure to understand the codebase before making changes."
         )
 
@@ -335,11 +349,18 @@ class AgentEngine:
             record = ToolExecution(
                 task_id=task_id,
                 tool_name=tool_name,
-                tool_input=json.dumps(tool_input),
-                tool_output=json.dumps(tool_output),
-                success=tool_output.get("success", False),
+                execution_status="success" if tool_output.get("success", False) else "error",
+                execution_output=json.dumps(
+                    {
+                        "input": tool_input,
+                        "output": tool_output,
+                    },
+                    default=str,
+                ),
             )
             self.db.add(record)
             self.db.commit()
         except Exception as exc:
-            logger.warning(f"Failed to persist tool execution record: {exc}")
+            self.db.rollback()
+            logger.exception("Failed to persist tool execution record")
+            raise RuntimeError("Failed to persist tool execution history") from exc
